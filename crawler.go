@@ -109,7 +109,7 @@ func (c Crawler) Crawl() (*Article, error) {
 	article.Doc = cleaner.clean(article)
 
 	article.TopImage = OpenGraphResolver(article)
-	if article.TopImage == "" {
+	if article.TopImage.URL == "" {
 		article.TopImage = WebPageResolver(article)
 	}
 	article.TopNode = extractor.calculateBestNode(article)

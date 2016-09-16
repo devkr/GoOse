@@ -1,15 +1,19 @@
 package goose
 
 import (
-	"github.com/advancedlogic/goquery"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/advancedlogic/goquery"
 )
 
 type candidate struct {
 	url     string
+	width   string
+	height  string
+	caption string
 	surface int
 	score   int
 }
@@ -88,10 +92,10 @@ func score(tag *goquery.Selection) int {
 }
 
 // WebPageResolver fetches the main image from the HTML page
-func WebPageResolver(article *Article) string {
+func WebPageResolver(article *Article) ArticleImage {
+	var ret ArticleImage
 	doc := article.Doc
 	imgs := doc.Find("img")
-	topImage := ""
 	var candidates []candidate
 	significantSurface := 320 * 200
 	significantSurfaceCount := 0
@@ -111,6 +115,7 @@ func WebPageResolver(article *Article) string {
 
 		width, _ := tag.Attr("width")
 		height, _ := tag.Attr("height")
+		alt, _ := tag.Attr("alt")
 		if width != "" {
 			w, _ := strconv.Atoi(width)
 			if height != "" {
@@ -135,6 +140,9 @@ func WebPageResolver(article *Article) string {
 		if tagscore >= 0 {
 			c := candidate{
 				url:     src,
+				width:   width,
+				height:  height,
+				caption: alt,
 				surface: surface,
 				score:   score(tag),
 			}
@@ -143,29 +151,35 @@ func WebPageResolver(article *Article) string {
 	})
 
 	if len(candidates) == 0 {
-		return ""
+		return ret
 	}
 
 	if significantSurfaceCount > 0 {
 		bestCandidate := findBestCandidateFromSurface(candidates)
-		topImage = bestCandidate.url
+		ret.URL = bestCandidate.url
+		ret.Width, _ = strconv.Atoi(bestCandidate.width)
+		ret.Height, _ = strconv.Atoi(bestCandidate.height)
+		ret.Caption = bestCandidate.caption
 	} else {
 		bestCandidate := findBestCandidateFromScore(candidates)
-		topImage = bestCandidate.url
+		ret.URL = bestCandidate.url
+		ret.Width, _ = strconv.Atoi(bestCandidate.width)
+		ret.Height, _ = strconv.Atoi(bestCandidate.height)
+		ret.Caption = bestCandidate.caption
 	}
 
-	a, err := url.Parse(topImage)
+	a, err := url.Parse(ret.URL)
 	if err != nil {
-		return topImage
+		return ret
 	}
 	finalURL, err := url.Parse(article.FinalURL)
 	if err != nil {
-		return topImage
+		return ret
 	}
 	b := finalURL.ResolveReference(a)
-	topImage = b.String()
+	ret.URL = b.String()
 
-	return topImage
+	return ret
 }
 
 func findBestCandidateFromSurface(candidates []candidate) candidate {
@@ -200,6 +214,9 @@ type ogTag struct {
 	tpe       string
 	attribute string
 	name      string
+	width     string
+	height    string
+	caption   string
 	value     string
 }
 
@@ -208,51 +225,71 @@ var ogTags = [4]ogTag{
 		tpe:       "facebook",
 		attribute: "property",
 		name:      "og:image",
+		width:     "og:image:width",
+		height:    "og:image:height",
+		caption:   "og:description",
 		value:     "content",
 	},
-	{
-		tpe:       "facebook",
-		attribute: "rel",
-		name:      "image_src",
-		value:     "href",
-	},
+	// No thumbnails
+	// {
+	// 	tpe:       "facebook",
+	// 	attribute: "rel",
+	// 	name:      "image_src",
+	// 	value:     "href",
+	// },
 	{
 		tpe:       "twitter",
 		attribute: "name",
 		name:      "twitter:image",
+		width:     "twitter:image:width",
+		height:    "twitter:image:height",
+		caption:   "twitter:image:alt",
 		value:     "value",
 	},
 	{
 		tpe:       "twitter",
 		attribute: "name",
 		name:      "twitter:image",
+		width:     "twitter:image:width",
+		height:    "twitter:image:height",
+		caption:   "twitter:image:alt",
 		value:     "content",
 	},
 }
 
 type ogImage struct {
-	url   string
-	tpe   string
-	score int
+	url     string
+	width   string
+	height  string
+	caption string
+	tpe     string
+	score   int
 }
 
 // OpenGraphResolver return OpenGraph properties
-func OpenGraphResolver(article *Article) string {
+func OpenGraphResolver(article *Article) ArticleImage {
+	var ret ArticleImage
+	var topOgImage ogImage
 	doc := article.Doc
 	meta := doc.Find("meta")
 	links := doc.Find("link")
-	topImage := ""
 	meta = meta.Union(links)
 	var ogImages []ogImage
 	meta.Each(func(i int, tag *goquery.Selection) {
 		for _, ogTag := range ogTags {
 			attr, exist := tag.Attr(ogTag.attribute)
 			value, vexist := tag.Attr(ogTag.value)
+			width, _ := tag.Attr(ogTag.width)
+			height, _ := tag.Attr(ogTag.height)
+			caption, _ := tag.Attr(ogTag.caption)
 			if exist && attr == ogTag.name && vexist {
 				ogImage := ogImage{
-					url:   value,
-					tpe:   ogTag.tpe,
-					score: 0,
+					url:     value,
+					width:   width,
+					height:  height,
+					caption: caption,
+					tpe:     ogTag.tpe,
+					score:   0,
 				}
 
 				ogImages = append(ogImages, ogImage)
@@ -260,10 +297,13 @@ func OpenGraphResolver(article *Article) string {
 		}
 	})
 	if len(ogImages) == 0 {
-		return ""
+		return ret
 	}
 	if len(ogImages) == 1 {
-		topImage = ogImages[0].url
+		ret.URL = ogImages[0].url
+		ret.Width, _ = strconv.Atoi(ogImages[0].width)
+		ret.Height, _ = strconv.Atoi(ogImages[0].height)
+		ret.Caption = ogImages[0].caption
 		goto IMAGE_FINALIZE
 	}
 	for _, ogImage := range ogImages {
@@ -274,13 +314,17 @@ func OpenGraphResolver(article *Article) string {
 			ogImage.score++
 		}
 	}
-	topImage = findBestImageFromScore(ogImages).url
+	topOgImage = findBestImageFromScore(ogImages)
+	ret.URL = topOgImage.url
+	ret.Width, _ = strconv.Atoi(topOgImage.width)
+	ret.Height, _ = strconv.Atoi(topOgImage.height)
+	ret.Caption = topOgImage.caption
 IMAGE_FINALIZE:
-	if !strings.HasPrefix(topImage, "http") {
-		topImage = "http://" + topImage
+	if !strings.HasPrefix(ret.URL, "http") {
+		ret.URL = "http://" + ret.URL
 	}
 
-	return topImage
+	return ret
 }
 
 // assume that len(ogImages)>=2

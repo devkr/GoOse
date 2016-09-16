@@ -16,7 +16,7 @@ type Article struct {
 	CanonicalLink   string             `json:"canonicalurl,omitempty"`
 	Domain          string             `json:"domain,omitempty"`
 	TopNode         *goquery.Selection `json:"-"`
-	TopImage        string             `json:"image,omitempty"`
+	TopImage        ArticleImage       `json:"-"`
 	Tags            *set.Set           `json:"tags,omitempty"`
 	Movies          *set.Set           `json:"movies,omitempty"`
 	FinalURL        string             `json:"url,omitempty"`
@@ -27,6 +27,14 @@ type Article struct {
 	PublishDate     string             `json:"publishdate,omitempty"`
 	AdditionalData  map[string]string  `json:"additionaldata,omitempty"`
 	Delta           int64              `json:"delta,omitempty"`
+}
+
+// ArticleImage is the main image of the article
+type ArticleImage struct {
+	URL     string `json:"imageurl,omitempty"`
+	Width   int    `json:"imagewidth,omitempty"`
+	Height  int    `json:"imagewidth,omitempty"`
+	Caption string `json:"imagecaption,omitempty"`
 }
 
 // ToString is a simple method to just show the title

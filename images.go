@@ -214,45 +214,38 @@ type ogTag struct {
 	tpe       string
 	attribute string
 	name      string
-	width     string
-	height    string
-	caption   string
 	value     string
 }
 
-var ogTags = [4]ogTag{
-	{
-		tpe:       "facebook",
-		attribute: "property",
-		name:      "og:image",
-		width:     "og:image:width",
-		height:    "og:image:height",
-		caption:   "og:description",
-		value:     "content",
-	},
-	// No thumbnails
-	// {
-	// 	tpe:       "facebook",
-	// 	attribute: "rel",
-	// 	name:      "image_src",
-	// 	value:     "href",
-	// },
+var ogTags = [5]ogTag{
 	{
 		tpe:       "twitter",
 		attribute: "name",
 		name:      "twitter:image",
-		width:     "twitter:image:width",
-		height:    "twitter:image:height",
-		caption:   "twitter:image:alt",
 		value:     "value",
 	},
 	{
 		tpe:       "twitter",
 		attribute: "name",
 		name:      "twitter:image",
-		width:     "twitter:image:width",
-		height:    "twitter:image:height",
-		caption:   "twitter:image:alt",
+		value:     "content",
+	},
+	{
+		tpe:       "twitter",
+		attribute: "name",
+		name:      "twitter:image:src",
+		value:     "value",
+	},
+	{
+		tpe:       "twitter",
+		attribute: "name",
+		name:      "twitter:image:src",
+		value:     "content",
+	},
+	{
+		tpe:       "facebook",
+		attribute: "property",
+		name:      "og:image",
 		value:     "content",
 	},
 }
@@ -275,21 +268,16 @@ func OpenGraphResolver(article *Article) ArticleImage {
 	links := doc.Find("link")
 	meta = meta.Union(links)
 	var ogImages []ogImage
+
 	meta.Each(func(i int, tag *goquery.Selection) {
 		for _, ogTag := range ogTags {
 			attr, exist := tag.Attr(ogTag.attribute)
 			value, vexist := tag.Attr(ogTag.value)
-			width, _ := tag.Attr(ogTag.width)
-			height, _ := tag.Attr(ogTag.height)
-			caption, _ := tag.Attr(ogTag.caption)
 			if exist && attr == ogTag.name && vexist {
 				ogImage := ogImage{
-					url:     value,
-					width:   width,
-					height:  height,
-					caption: caption,
-					tpe:     ogTag.tpe,
-					score:   0,
+					url:   value,
+					tpe:   ogTag.tpe,
+					score: 0,
 				}
 
 				ogImages = append(ogImages, ogImage)
@@ -299,6 +287,54 @@ func OpenGraphResolver(article *Article) ArticleImage {
 	if len(ogImages) == 0 {
 		return ret
 	}
+
+	// Grab caption and size
+	for i := 0; i < len(ogImages); i++ {
+		if ogImages[i].tpe == "twitter" {
+			meta.Each(func(j int, tag *goquery.Selection) {
+				attr, exist := tag.Attr("name")
+				if exist {
+					val, exist := tag.Attr("content")
+					if !exist {
+						val, _ = tag.Attr("value")
+					}
+
+					switch attr {
+					case "twitter:description":
+						fallthrough
+					case "twitter:image:alt":
+						ogImages[i].caption = val
+					case "twitter:image:width":
+						ogImages[i].width = val
+					case "twitter:image:height":
+						ogImages[i].height = val
+					}
+
+				}
+			})
+		} else if ogImages[i].tpe == "facebook" {
+			meta.Each(func(j int, tag *goquery.Selection) {
+				attr, exist := tag.Attr("property")
+				if exist {
+					val, exist := tag.Attr("content")
+					if !exist {
+						val, _ = tag.Attr("value")
+					}
+
+					switch attr {
+					case "og:description":
+						ogImages[i].caption = val
+					case "og:image:width":
+						ogImages[i].width = val
+					case "og:image:height":
+						ogImages[i].height = val
+					}
+
+				}
+			})
+		}
+	}
+
 	if len(ogImages) == 1 {
 		ret.URL = ogImages[0].url
 		ret.Width, _ = strconv.Atoi(ogImages[0].width)
